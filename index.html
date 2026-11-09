@@ -196,7 +196,10 @@
   .sc-count{font-size:22px;font-weight:800;color:var(--yellow);font-variant-numeric:tabular-nums}
   .sc-mode{flex:1;font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;opacity:.85}
   .sc-torch.on{background:var(--yellow);color:var(--ink)}
-  .sc-frame{position:absolute;left:8%;right:8%;top:30%;height:22%;pointer-events:none}
+  .sc-frame{position:absolute;left:5%;right:5%;top:34%;height:18%;pointer-events:none}
+  .sc-zoom{position:absolute;left:50%;top:calc(52% + 18px);transform:translateX(-50%);display:flex;gap:8px;background:rgba(0,0,0,.45);border-radius:999px;padding:5px}
+  .sc-zoom button{min-width:52px;height:40px;border:0;border-radius:999px;background:transparent;color:#fff;font-weight:800;font-size:15px}
+  .sc-zoom button.on{background:var(--yellow);color:var(--ink)}
   .sc-frame i{position:absolute;width:34px;height:34px;border:5px solid var(--yellow)}
   .sc-frame i:nth-child(1){top:0;left:0;border-right:0;border-bottom:0;border-radius:12px 0 0 0}
   .sc-frame i:nth-child(2){top:0;right:0;border-left:0;border-bottom:0;border-radius:0 12px 0 0}
@@ -352,7 +355,7 @@ const IC = {
    Dentro do Google (link /exec): usa google.script.run.
    Hospedado fora (GitHub Pages etc.): usa o link /exec como API. Cole o link abaixo
    ou abra o app uma vez com ?api=LINK_DO_APP no fim do endereço. */
-const API_FIXO = 'https://script.google.com/a/macros/dtel.com.br/s/AKfycbxnm4ZbdTcHmBCcOsQKdPyOhxJxb7ltqw8XwD1FFGZymx1QM0_opuMUozgMjLTm7X3a/exec';
+const API_FIXO = 'https://script.google.com/macros/s/AKfycbxnm4ZbdTcHmBCcOsQKdPyOhxJxb7ltqw8XwD1FFGZymx1QM0_opuMUozgMjLTm7X3a/exec';
 const EM_GOOGLE = !!(window.google && google.script && google.script.run);
 function apiUrl() {
   let q = '';
@@ -370,7 +373,7 @@ function call(fn, ...args) {
   return fetch(url, {method: 'POST', redirect: 'follow', headers: {'Content-Type': 'text/plain;charset=utf-8'}, body: JSON.stringify({fn, args})})
     .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(j => { if (!j.ok) throw j.erro || 'Erro no servidor.'; return j.data; })
-    .catch(e => { throw (e && e.message) ? (e.message === 'Failed to fetch' ? 'Sem conexão com a planilha.' : e.message) : String(e); });
+    .catch(e => { throw (e && e.message) ? (e.message === 'Failed to fetch' ? 'Sem conexão com a planilha. Confira: implantação como "Qualquer pessoa" e publicada em Nova versão.' : e.message) : String(e); });
 }
 function busy(on) { $('loading').classList.toggle('hidden', !on); }
 async function act(fn, ...args) {
@@ -767,12 +770,26 @@ async function encerrarLote(id) {
 }
 
 /* ---------- câmera ao vivo: lê um código atrás do outro, só apontando ---------- */
-let SC_ = null;
+let SC_ = null, scCanvas = null, scQuadro = 0;
+/* Alterna: quadro inteiro / recorte ampliado da moldura. O recorte ampliado lê códigos pequenos e finos. */
+async function detectar(det, video) {
+  scQuadro++;
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || scQuadro % 2) return det.detect(video);
+  const cw = vw * 0.9, ch = vh * 0.34, x = (vw - cw) / 2, y = vh * 0.33;
+  const esc = Math.min(2, 2400 / cw);
+  scCanvas = scCanvas || document.createElement('canvas');
+  scCanvas.width = Math.round(cw * esc); scCanvas.height = Math.round(ch * esc);
+  const g = scCanvas.getContext('2d', {willReadFrequently: true});
+  g.imageSmoothingEnabled = false;
+  g.drawImage(video, x, y, cw, ch, 0, 0, scCanvas.width, scCanvas.height);
+  return det.detect(scCanvas);
+}
 async function abrirCamera(lote) {
   if (EM_GOOGLE || !navigator.mediaDevices || !('BarcodeDetector' in window)) return abrirFoto(lote);
   let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: {ideal: 'environment'}, width: {ideal: 1920}, height: {ideal: 1080}}, audio: false});
+    stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: {ideal: 'environment'}, width: {ideal: 2560}, height: {ideal: 1440}}, audio: false});
   } catch (e) { toast('Libere a câmera para este site nas permissões do Chrome.', 'err'); return; }
   const formatos = await BarcodeDetector.getSupportedFormats();
   const det = new BarcodeDetector({formats: formatos});
@@ -784,9 +801,10 @@ async function abrirCamera(lote) {
       <button class="ibtn sc-torch hidden" id="scTorch" aria-label="Lanterna"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M7 2h10l-2 6H9zM9 8h6v13H9z"/></svg></button>
       <button class="ibtn" id="scClose" aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <div class="sc-frame"><i></i><i></i><i></i><i></i><div class="sc-laser"></div></div>
+    <div class="sc-zoom hidden" id="scZoom"></div>
     <div class="sc-flash" id="scFlash"></div>
     <div class="sc-bottom">
-      <div class="sc-last" id="scLast">Aponte para o código de barras</div>
+      <div class="sc-last" id="scLast"><span class="sc-dim">Encaixe o código na moldura. Etiqueta pequena? Use 2x ou 3x.</span></div>
       <div class="sc-pat" id="scPat"></div>
       <div class="sc-choices" id="scChoices"></div>
       <button class="btn cta" id="scDone">Concluir</button>
@@ -796,7 +814,21 @@ async function abrirCamera(lote) {
   video.srcObject = stream;
   try { await video.play(); } catch (e) {}
   const track = stream.getVideoTracks()[0];
-  try { const caps = track.getCapabilities ? track.getCapabilities() : {}; if (caps.focusMode && caps.focusMode.includes('continuous')) track.applyConstraints({advanced: [{focusMode: 'continuous'}]}); if (caps.torch) $('scTorch').classList.remove('hidden'); } catch (e) {}
+  try {
+    const caps = track.getCapabilities ? track.getCapabilities() : {};
+    if (caps.focusMode && caps.focusMode.includes('continuous')) track.applyConstraints({advanced: [{focusMode: 'continuous'}]});
+    if (caps.torch) $('scTorch').classList.remove('hidden');
+    /* Zoom óptico/digital da câmera: a etiqueta pequena fica grande sem precisar encostar (o foco não fecha muito perto) */
+    if (caps.zoom && caps.zoom.max > 1) {
+      const niveis = [1, 2, 3].filter(z => z >= caps.zoom.min && z <= caps.zoom.max);
+      const pref = Number(lerPref('mro_zoom')) || Math.min(2, caps.zoom.max);
+      const setZoom = z => { track.applyConstraints({advanced: [{zoom: z}]}).catch(() => {}); salvarPref('mro_zoom', String(z)); $('scZoom').querySelectorAll('button').forEach(b => b.classList.toggle('on', Number(b.dataset.z) === z)); };
+      $('scZoom').innerHTML = niveis.map(z => `<button type="button" data-z="${z}">${z}x</button>`).join('');
+      $('scZoom').onclick = e => { const b = e.target.closest('[data-z]'); if (b) { buzz(6); setZoom(Number(b.dataset.z)); } };
+      $('scZoom').classList.remove('hidden');
+      setZoom(niveis.includes(pref) ? pref : niveis[niveis.length - 1]);
+    }
+  } catch (e) {}
   let lock = null; try { lock = await navigator.wakeLock.request('screen'); } catch (e) {}
   SC_ = {vivo: true, lote, padrao: null, recentes: {}, lidos: 0, escolhendo: false, torch: false};
   const fechar = () => {
@@ -808,8 +840,8 @@ async function abrirCamera(lote) {
   mostrarPadrao();
   const loop = async () => {
     if (!SC_ || !SC_.vivo) return;
-    try { if (video.readyState >= 2) tratarLeitura(await det.detect(video)); } catch (e) {}
-    setTimeout(loop, 90);
+    try { if (video.readyState >= 2) tratarLeitura(await detectar(det, video)); } catch (e) {}
+    setTimeout(loop, 60);
   };
   loop();
 }
