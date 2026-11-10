@@ -135,10 +135,18 @@
   /* ===== Serviços ===== */
   .back{display:inline-flex;align-items:center;gap:6px;border:0;background:none;color:var(--green);font-weight:700;font-size:17px;padding:10px 4px;margin:-6px 0 6px}
   .back svg{width:22px;height:22px}
-  .chips{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 10px;margin:8px -2px 0;scrollbar-width:none}
+  /* Categorias: faixa que rola de ponta a ponta da tela, com esmaecimento nas bordas (nada aparece "cortado") */
+  .chipsbox{position:relative;margin:10px -16px 0}
+  .chips{display:flex;gap:8px;overflow-x:auto;padding:4px 16px 12px;scroll-snap-type:x proximity;scroll-padding:0 16px;scroll-behavior:smooth;scrollbar-width:none;overscroll-behavior-x:contain}
   .chips::-webkit-scrollbar{display:none}
-  .chip{flex:none;min-height:40px;border:1.5px solid var(--line);background:#fff;border-radius:999px;padding:6px 14px;font-size:15px;font-weight:600;color:var(--ink-2);transition:all var(--fast) var(--ease)}
-  .chip.on{background:var(--green);border-color:var(--green);color:#fff}
+  .chipsbox::before,.chipsbox::after{content:"";position:absolute;top:0;bottom:8px;width:48px;pointer-events:none;z-index:1;transition:opacity var(--fast)}
+  .chipsbox::before{left:0;background:linear-gradient(90deg,var(--bg),rgba(245,246,243,0))}
+  .chipsbox::after{right:0;background:linear-gradient(270deg,var(--bg),rgba(245,246,243,0))}
+  .chipsbox.ini::before,.chipsbox.fim::after{opacity:0}
+  .chip{flex:none;scroll-snap-align:start;white-space:nowrap;min-height:42px;border:1.5px solid var(--line);background:#fff;border-radius:999px;padding:8px 16px;font-size:15px;font-weight:600;color:var(--ink-2);transition:background var(--fast) var(--ease),color var(--fast),border-color var(--fast),transform var(--fast) var(--ease)}
+  .chip:active{transform:scale(.95)}
+  .chip.on{background:var(--green);border-color:var(--green);color:#fff;box-shadow:0 4px 12px rgba(0,103,52,.22)}
+  .chip .n{display:inline-block;margin-left:6px;font-size:12px;font-weight:700;opacity:.65}
   .svcgroup h3{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.14em;margin:18px 2px 8px}
   .svcbtn{display:flex;width:100%;text-align:left;align-items:center;gap:12px;background:#fff;border:1.5px solid var(--line);border-radius:14px;padding:14px 16px;margin:0 0 8px;min-height:64px;transition:transform var(--fast) var(--ease),border-color var(--fast)}
   .svcbtn:active{transform:scale(.98);border-color:var(--green)}
@@ -312,7 +320,7 @@
   <section id="vServ" class="view hidden">
     <button class="back" onclick="go('vHome', true)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Voltar</button>
     <input id="busca" placeholder="Buscar: ONU, laser, limpeza…" oninput="renderServicos()" autocomplete="off">
-    <div class="chips" id="chips"></div>
+    <div class="chipsbox ini" id="chipsBox"><div class="chips" id="chips"></div></div>
     <div id="servList"></div>
   </section>
 
@@ -722,8 +730,22 @@ async function cancelar() {
 /* ---------- serviços ---------- */
 function renderServicos() {
   const cats = [...new Set(BOOT.servicos.map(s => s.categoria))];
-  $('chips').innerHTML = ['', ...cats].map(c => `<button class="chip${c === catSel ? ' on' : ''}" data-c="${esc(c)}">${c ? esc(c) : 'Todos'}</button>`).join('');
-  $('chips').onclick = e => { const b = e.target.closest('.chip'); if (!b) return; buzz(6); catSel = b.dataset.c; renderServicos(); };
+  const box = $('chips');
+  /* Os botões de categoria são montados uma vez só: assim a faixa não volta ao início a cada toque */
+  if (box.dataset.k !== cats.join('|')) {
+    box.dataset.k = cats.join('|');
+    const conta = c => BOOT.servicos.filter(s => !c || s.categoria === c).length;
+    box.innerHTML = ['', ...cats].map(c => `<button class="chip" data-c="${esc(c)}">${c ? esc(c) : 'Todos'}<span class="n">${conta(c)}</span></button>`).join('');
+    box.onclick = e => {
+      const b = e.target.closest('.chip'); if (!b) return;
+      buzz(6); catSel = b.dataset.c; renderServicos();
+      b.scrollIntoView({behavior: 'smooth', inline: 'center', block: 'nearest'});
+    };
+    const bordas = () => { const fim = box.scrollLeft + box.clientWidth >= box.scrollWidth - 4; $('chipsBox').classList.toggle('ini', box.scrollLeft <= 4); $('chipsBox').classList.toggle('fim', fim); };
+    box.onscroll = bordas; setTimeout(bordas, 50);
+  }
+  box.querySelectorAll('.chip').forEach(b => b.classList.toggle('on', b.dataset.c === catSel));
+  if (!catSel) box.scrollLeft = 0;
   const q = $('busca').value.trim().toLowerCase();
   const lista = BOOT.servicos.filter(s => (!catSel || s.categoria === catSel) && (!q || (s.servico + ' ' + s.codigo + ' ' + s.categoria + ' ' + s.equipamento).toLowerCase().includes(q)));
   const grupos = {};
