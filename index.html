@@ -671,7 +671,8 @@ function adicionarNaFila(numeros) {
     s.seriais.push(item); fila.push(item); ultimoSerial = serial; n++;
   });
   if (dup && !n) erroLeitura(dup === 1 ? 'Esse número já está nesta sessão.' : dup + ' números já estavam na sessão.');
-  else if (dup) toast(`${n} adicionados · ${dup} repetidos ignorados.`);
+  else if (dup) toast(`${n} adicionados · ${dup} repetido(s) ignorado(s).`);
+  else if (n > 1) toast(`${n} números adicionados.`, 'ok');
   if (n) { beep(true); buzz(15); if (!doc && resultado !== 'APROVADO') { setResultado('APROVADO'); $('defeito').value = ''; } }
   renderSeriais();
   clearTimeout(timerFila); timerFila = setTimeout(enviarFila, n > 1 ? 50 : 400);
@@ -768,8 +769,7 @@ function mostrarLote() {
     const lista = v || [];
     lidosLote = [];
     if (!lista.length) return;
-    const n = adicionarNaFila(lista);
-    if (n) toast(`${n} números adicionados.`, 'ok');
+    adicionarNaFila(lista);
   });
 }
 async function colarLista() {
@@ -777,8 +777,7 @@ async function colarLista() {
   const v = await ask('Colar lista', html, 'Adicionar', root => setTimeout(() => root.querySelector('#mLista').focus(), 280),
     root => root.querySelector('#mLista').value.split(/[\s,;]+/).filter(Boolean));
   if (!v || !v.length) return;
-  const n = adicionarNaFila(v);
-  if (n) toast(`${n} números adicionados.`, 'ok');
+  adicionarNaFila(v);
 }
 async function remSerial(serial) {
   if (!(await ask('Remover este número?', `<p class="s" style="font-family:ui-monospace,monospace;font-size:20px">${esc(serial)}</p>`, 'Remover'))) return;
