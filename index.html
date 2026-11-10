@@ -80,6 +80,24 @@
   .action.alt{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
   .action.alt .ic{background:var(--green-soft);color:var(--green)}
   .action.alt span{color:var(--muted)}
+  /* Cartões de departamento: acendem ao tocar */
+  .depcard{display:flex;align-items:center;gap:16px;width:100%;text-align:left;border:2px solid var(--line);background:#fff;color:var(--ink);border-radius:20px;padding:22px 18px;margin:0 0 14px;transition:background 220ms var(--ease),border-color 220ms,color 220ms,transform 220ms var(--ease),opacity 220ms,box-shadow 220ms}
+  .depcard:active{transform:scale(.98)}
+  .depcard .ic{width:60px;height:60px;border-radius:16px;background:var(--green-soft);color:var(--green);display:grid;place-items:center;flex:none;transition:background 220ms,color 220ms}
+  .depcard .ic svg{width:32px;height:32px}
+  .depcard .txt{flex:1;min-width:0}
+  .depcard b{display:block;font-size:21px;font-weight:800;line-height:1.15}
+  .depcard .sub{display:block;font-size:15px;color:var(--muted);margin-top:4px;transition:color 220ms}
+  .depcard .ult{display:inline-block;margin-top:8px;font-size:11.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:3px 9px;border-radius:999px;background:var(--yellow);color:var(--ink)}
+  .depcard .ok{width:36px;height:36px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;flex:none;color:transparent;transition:all 220ms var(--ease)}
+  .depcard .ok svg{width:20px;height:20px}
+  .depcard.last{border-color:var(--lime)}
+  .depcard.on{background:var(--green);border-color:var(--green);color:#fff;box-shadow:0 14px 30px rgba(0,103,52,.32);transform:scale(1.02)}
+  .depcard.on .ic{background:var(--yellow);color:var(--green)}
+  .depcard.on .sub{color:#CFE3D5}
+  .depcard.on .ok{background:var(--yellow);border-color:var(--yellow);color:var(--green);animation:pop 320ms var(--ease)}
+  #depList.picking .depcard:not(.on){opacity:.4;transform:scale(.97)}
+  @keyframes pop{0%{transform:scale(.3)}70%{transform:scale(1.18)}100%{transform:scale(1)}}
   .action .badge{margin-left:auto;align-self:center;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:4px 10px;border-radius:999px;background:var(--yellow);color:var(--ink)}
   .depbar{display:flex;align-items:center;gap:10px;width:100%;border:1.5px solid var(--line);background:#fff;border-radius:14px;padding:10px 14px;margin:0 0 14px;text-align:left;transition:transform var(--fast) var(--ease)}
   .depbar:active{transform:scale(.98)}
@@ -471,18 +489,24 @@ function renderDep() {
   const deps = BOOT.departamentos && BOOT.departamentos.length ? BOOT.departamentos : ['MANUTENÇÃO ELETRÔNICA'];
   const meu = (BOOT.colaboradores.find(c => c.nome === U) || {}).dep;
   const ult = lerPref('mro_dep_' + U) || meu || '';
-  $('depList').innerHTML = deps.map(d => {
+  const box = $('depList');
+  box.classList.remove('picking');
+  box.innerHTML = deps.map(d => {
     const n = BOOT.servicos.filter(s => (s.dep || 'MANUTENÇÃO ELETRÔNICA') === d).length;
-    const destaque = d === ult;
-    return `<button class="action ${destaque ? 'main' : 'alt'} rise" data-d="${esc(d)}">
+    const atual = d === depSel, ultimo = !depSel && d === ult;
+    return `<button class="depcard rise${atual ? ' on' : ''}${ultimo ? ' last' : ''}" data-d="${esc(d)}">
       <div class="ic">${depIcone(d)}</div>
-      <div><b>${esc(depNomeBonito(d))}</b><span>${n ? n + ' serviço' + (n > 1 ? 's' : '') : 'Nenhum serviço cadastrado ainda'}</span></div>
-      ${destaque ? '<span class="badge">último</span>' : ''}</button>`;
+      <div class="txt"><b>${esc(depNomeBonito(d))}</b><span class="sub">${n ? n + ' serviço' + (n > 1 ? 's' : '') : 'Nenhum serviço cadastrado ainda'}</span>${ultimo ? '<span class="ult">último usado</span>' : atual ? '<span class="ult">atual</span>' : ''}</div>
+      <span class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></button>`;
   }).join('');
-  $('depList').onclick = e => {
-    const b = e.target.closest('[data-d]'); if (!b) return;
-    buzz(10); depSel = b.dataset.d; salvarPref('mro_dep_' + U, depSel); catSel = '';
-    render(); go('vHome');
+  /* Ao tocar: o cartão acende (verde + check amarelo), os outros apagam, e só então segue para o início */
+  box.onclick = e => {
+    const b = e.target.closest('[data-d]'); if (!b || box.classList.contains('picking')) return;
+    buzz([12, 40, 18]);
+    box.querySelectorAll('.depcard').forEach(c => { c.classList.remove('rise'); c.classList.toggle('on', c === b); });
+    box.classList.add('picking');
+    depSel = b.dataset.d; salvarPref('mro_dep_' + U, depSel); catSel = '';
+    setTimeout(() => { render(); go('vHome'); toast(depNomeBonito(depSel) + ' selecionado.', 'ok'); }, 380);
   };
 }
 function sair() { U = null; PIN = ''; EST = null; depSel = ''; drawPin(); clearInterval(timerH); $('ttl').textContent = 'Entrar'; $('whoDep').textContent = 'MRO · Produção';
@@ -544,7 +568,7 @@ function renderSessao() {
           <select id="defeito" class="hidden" style="margin-top:10px"><option value="">Qual o defeito?</option>${BOOT.defeitos.map(d => `<option>${esc(d)}</option>`).join('')}</select>`}
           <div class="modes${modoLote ? ' is-lote' : ''}" id="modes"><span class="pill"></span><button data-m="1" class="${modoLote ? '' : 'on'}">Um a um</button><button data-m="2" class="${modoLote ? 'on' : ''}">Em lote</button></div>
           <form class="scan" onsubmit="addSerial();return false">
-            <input id="serialIn" autocomplete="off" autocapitalize="characters" enterkeyhint="done" inputmode="${tecladoOff ? 'none' : 'text'}" placeholder="${doc ? 'Nº da requisição' : 'Bipe ou digite'}">
+            <input id="serialIn" autocomplete="off" autocapitalize="characters" enterkeyhint="done" inputmode="${tecladoOff ? 'none' : 'text'}" placeholder="${doc ? 'Nº ' + esc(s.unidade || 'do documento') : 'Bipe ou digite'}">
             <button type="submit" aria-label="Adicionar">${IC.plus}</button>
             ${!doc && !modoLote ? `<button type="button" class="cam" onclick="abrirCamera(false)" aria-label="Câmera">${IC.cam}</button>` : ''}
           </form>
@@ -580,8 +604,8 @@ function renderSeriais() {
   const pend = todos.filter(x => x.pend).length;
   if ($('sync')) { $('sync').textContent = pend ? `salvando ${pend}…` : (todos.length ? 'tudo salvo ✓' : ''); $('sync').classList.toggle('busy', !!pend); }
   if (EST.aberta.contagem === 'DOC') {
-    $('cnt').innerHTML = `<b>${todos.length}</b> requisição(ões) lançada(s)`;
-    $('serList').innerHTML = l.slice().reverse().map(x => `<li${cls(x)}><span class="s">${esc(x.serial)}</span>${x.pend ? '<span class="tag pend">salvando…</span>' : `<span class="tag ok">Lançada</span><button class="x" onclick="remSerial('${esc(x.serial)}')" aria-label="Remover">×</button>`}</li>`).join('');
+    $('cnt').innerHTML = `<b>${todos.length}</b> lançado(s) · ${esc(EST.aberta.unidade || 'documento')}`;
+    $('serList').innerHTML = l.slice().reverse().map(x => `<li${cls(x)}><span class="s">${esc(x.serial)}</span>${x.pend ? '<span class="tag pend">salvando…</span>' : `<span class="tag ok">Lançado</span><button class="x" onclick="remSerial('${esc(x.serial)}')" aria-label="Remover">×</button>`}</li>`).join('');
   } else {
     const ap = todos.filter(x => x.resultado === 'APROVADO').length, rp = todos.filter(x => x.resultado === 'REPROVADO').length, sc = todos.filter(x => x.resultado === 'SUCATA').length;
     $('cnt').innerHTML = `<b>${todos.length}</b> seriais · ${ap} aprov. · ${rp} reprov. · ${sc} sucata`;
@@ -759,9 +783,9 @@ async function encerrar() {
     body = `${tempo}<p style="font-size:18px">Serão registrados <b>${s.seriais.length}</b> ${s.contagem === 'DOC' ? 'lançamentos' : 'seriais'}.</p><label>Observação (opcional)</label><input id="mObs">`;
   } else {
     body = `${tempo}
-      <label>Quantas unidades você fez?</label><input id="mQtd" class="qty" type="number" inputmode="numeric" min="0" value="">
+      <label>Quantidade feita${s.unidade ? ' · ' + esc(s.unidade) : ''}</label><input id="mQtd" class="qty" type="number" inputmode="numeric" min="0" value="">
       <div class="steps"><button type="button" data-a="1">+1</button><button type="button" data-a="5">+5</button><button type="button" data-a="10">+10</button><button type="button" data-a="50">+50</button></div>
-      <label>Observação (opcional)</label><input id="mObs">`;
+      <label>${s.obsObrig ? 'Descreva o que foi feito (obrigatório)' : 'Observação (opcional)'}</label><input id="mObs">`;
   }
   const ok = await ask('Encerrar serviço', body, 'Confirmar', root => {
     const st = root.querySelector('.steps');
@@ -770,7 +794,9 @@ async function encerrar() {
   }, root => {
     const q = root.querySelector('#mQtd');
     if (q && (q.value === '' || Number(q.value) < 0)) { buzz([30, 40, 30]); toast('Informe a quantidade.', 'err'); return false; }
-    return {qtd: q ? Number(q.value) : 0, obs: root.querySelector('#mObs').value};
+    const obs = root.querySelector('#mObs').value;
+    if (s.obsObrig && !obs.trim()) { buzz([30, 40, 30]); toast('Descreva o que foi feito.', 'err'); root.querySelector('#mObs').focus(); return false; }
+    return {qtd: q ? Number(q.value) : 0, obs};
   });
   if (!ok) return;
   await act('encerrarSessao', s.id, ok.qtd, ok.obs).then(() => { buzz([15, 60, 15]); toast('Serviço registrado ✓', 'ok'); }).catch(() => {});
@@ -784,6 +810,7 @@ async function cancelar() {
 /* ---------- serviços ---------- */
 function renderServicos() {
   const base = servicosDoDep();
+  $('busca').placeholder = /ESTOQ/i.test(depSel) ? 'Buscar: NF, romaneio, inventário…' : 'Buscar: ONU, laser, limpeza…';
   const cats = [...new Set(base.map(s => s.categoria))];
   const box = $('chips');
   /* Os botões de categoria são montados uma vez só: assim a faixa não volta ao início a cada toque */
@@ -807,7 +834,7 @@ function renderServicos() {
   const grupos = {};
   lista.forEach(s => (grupos[s.categoria] = grupos[s.categoria] || []).push(s));
   $('servList').innerHTML = Object.keys(grupos).map(c => `<div class="svcgroup rise"><h3>${esc(c)}</h3>${grupos[c].map(s =>
-    `<button class="svcbtn" onclick="iniciar('${esc(s.codigo)}')"><span class="dotc"></span><b>${esc(s.servico)}</b><small>${s.contagem === 'SERIAL' ? 'serial' : s.contagem === 'DOC' ? 'nº req.' : 'qtd'}</small>${IC.go}</button>`).join('')}</div>`).join('')
+    `<button class="svcbtn" onclick="iniciar('${esc(s.codigo)}')"><span class="dotc"></span><b>${esc(s.servico)}</b><small>${s.contagem === 'SERIAL' ? 'serial' : s.contagem === 'DOC' ? 'nº doc.' : 'qtd'}</small>${IC.go}</button>`).join('')}</div>`).join('')
     || (base.length ? '<p class="muted" style="text-align:center;margin-top:24px">Nenhum serviço encontrado.</p>'
       : `<div class="card" style="text-align:center;margin-top:8px"><p style="font-weight:700;margin:0 0 6px">Ainda não há serviços de ${esc(depNomeBonito(depSel))}.</p><p class="muted" style="margin:0">O líder cadastra na aba Servicos da planilha, coluna Departamento.</p></div>`);
 }
